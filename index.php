@@ -188,6 +188,7 @@ if (isset($_POST['ajax_action'])) {
         }
 
         .status-cards {
+            cursor:move;
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
             gap: 20px;
@@ -361,6 +362,22 @@ if (isset($_POST['ajax_action'])) {
             text-decoration: underline;
             font-size: 16px;
         }
+
+        /* Dodaj do CSS */
+        .status-card.dragging {
+            opacity: 0;
+            /* box-shadow: 0 12px 32px 8px #3949ab, 0 8px 32px rgba(26,35,126,0.35); */
+            z-index: 10;
+        }
+        .status-card.drag-over {
+            outline: none;
+            background: #e3eaff;
+            /* box-shadow: 0 0 0 4px #3949ab, 0 8px 24px rgba(26,35,126,0.25); */
+            opacity: 0.5;
+            border: 3px dashed #3949ab;
+            /* transform: translateY(10px) translateX(10px) scale(0.98); */
+            transition: transform 0.2s cubic-bezier(.4,2,.6,1), opacity 0.2s;
+        }
     </style>
 </head>
 <body>
@@ -437,6 +454,19 @@ if (isset($_POST['ajax_action'])) {
             localStorage.setItem('baselinker_status_colors', JSON.stringify(colors));
         }
         let statusColors = getStatusColors();
+
+        // Pobierz/zapisz kolejność statusów z localStorage
+        function getStatusOrder() {
+            try {
+                return JSON.parse(localStorage.getItem('baselinker_status_order')) || [];
+            } catch (e) {
+                return [];
+            }
+        }
+        function saveStatusOrder(order) {
+            localStorage.setItem('baselinker_status_order', JSON.stringify(order));
+        }
+        let statusOrder = getStatusOrder();
 
         // Sprawdź zapisany token
         window.addEventListener('load', () => {
@@ -602,9 +632,21 @@ if (isset($_POST['ajax_action'])) {
             const statusCards = document.getElementById('statusCards');
             statusCards.innerHTML = '';
 
-            selectedStatuses.forEach(statusId => {
+            // Kolejność: najpierw z localStorage, potem reszta
+            const ordered = Array.from(selectedStatuses).sort((a, b) => {
+                const idxA = statusOrder.indexOf(a);
+                const idxB = statusOrder.indexOf(b);
+                if (idxA === -1 && idxB === -1) return 0;
+                if (idxA === -1) return 1;
+                if (idxB === -1) return -1;
+                return idxA - idxB;
+            });
+
+            ordered.forEach(statusId => {
                 const card = document.createElement('div');
                 card.className = 'status-card';
+                card.setAttribute('draggable', 'true');
+                card.dataset.statusId = statusId;
                 // Kolor z localStorage lub domyślny
                 const color = statusColors[statusId] || '#667eea';
                 card.style.setProperty('--status-color', color);
@@ -612,24 +654,62 @@ if (isset($_POST['ajax_action'])) {
                 const statusName = statusInfo ? statusInfo.name : `Status ${statusId}`;
                 const orderCount = counts[statusId] || 0;
                 card.innerHTML = `
-                    <div class="status-name">${statusName}</div>
+                    <div class="status-name"> ${statusName}</div>
                     <div class="order-count">${orderCount}</div>
                     <div style="margin-top: 10px; color: #666;">zamówień</div>
                 `;
+                // Drag & drop obsługa
+                card.addEventListener('dragstart', (e) => {
+                    card.classList.add('dragging');
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', statusId);
+
+                    // Ustaw własny drag image (klon elementu)
+                    const dragIcon = card.cloneNode(true);
+                    dragIcon.style.position = 'absolute';
+                    dragIcon.style.top = '-9999px';
+                    dragIcon.style.left = '-9999px';
+                    dragIcon.style.opacity = '1';
+                    dragIcon.style.boxShadow = '0 12px 32px 8px #3949ab, 0 8px 32px rgba(26,35,126,0.35)';
+                    document.body.appendChild(dragIcon);
+
+                    // Usuń klona po krótkim czasie (po rozpoczęciu drag)
+                    setTimeout(() => {
+                        document.body.removeChild(dragIcon);
+                    }, 0);
+                });
+                card.addEventListener('dragend', () => {
+                    card.classList.remove('dragging');
+                });
+                card.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    card.classList.add('drag-over');
+                });
+                card.addEventListener('dragleave', () => {
+                    card.classList.remove('drag-over');
+                });
+                card.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    card.classList.remove('drag-over');
+                    const draggedId = e.dataTransfer.getData('text/plain');
+                    if (draggedId && draggedId !== statusId) {
+                        // Zmień kolejność
+                        const arr = ordered.slice();
+                        const from = arr.indexOf(draggedId);
+                        const to = arr.indexOf(statusId);
+                        if (from !== -1 && to !== -1) {
+                            arr.splice(to, 0, arr.splice(from, 1)[0]);
+                            statusOrder = arr;
+                            saveStatusOrder(statusOrder);
+                            displayOrderCounts(counts); // odśwież widok
+                        }
+                    }
+                });
                 statusCards.appendChild(card);
             });
         }
 
         // Aktualizuj czas ostatniego odświeżenia i licznik do kolejnego
-        // function updateLastRefreshTime() {
-        //     const lastUpdate = document.getElementById('lastUpdate');
-        //     const now = new Date();
-        //     let refreshInterval = parseInt(document.getElementById('refreshInterval').value);
-        //     if (isNaN(refreshInterval) || refreshInterval < 1) refreshInterval = 60;
-        //     timeToNextRefresh = refreshInterval;
-        //     lastUpdate.innerHTML = `Ostatnia aktualizacja: ${now.toLocaleTimeString('pl-PL')}<br>Do kolejnego odświeżenia: <span id='countdown'>${timeToNextRefresh}</span> s`;
-        // }
-
         function updateLastRefreshTime() {
             const lastUpdate = document.getElementById('lastUpdate');
             const now = new Date();

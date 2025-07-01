@@ -38,6 +38,7 @@ Aplikacja webowa do monitorowania liczby zamówień w wybranych statusach na pla
 - Zapamiętywanie ustawień (localStorage)
 - Automatyczne uruchamianie monitoringu po wejściu na stronę
 - Nowoczesny, responsywny interfejs
+- **Zmiana kolejności statusów metodą drag & drop** – na głównym widoku możesz przeciągać karty statusów myszką, aby ustawić ich kolejność według własnych preferencji. Kolejność jest zapamiętywana.
 
 ---
 
